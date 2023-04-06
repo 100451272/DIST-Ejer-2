@@ -1,157 +1,114 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+//#include "llist.h"???
 
-void procesar_peticion(int sockfd){
-    int op, key, value2;
-    char value1[256];
+#define PORT 8080
+
+void procesar_peticion(int socket_cliente) {
+    int op, clave, value2, result;
     double value3;
+    char value1[255];
     struct tupla tupla;
 
-    if(recv(sockfd, &op, sizeof(op), 0) < 0){
-        perror("recv");
-        exit(-1);
+    read(socket_cliente, &op, sizeof(int));
+    switch (op) {
+        case 0:
+            result = init();
+            write(socket_cliente, &result, sizeof(int));
+            break;
+        case 1:
+            read(socket_cliente, &clave, sizeof(int));
+            read(socket_cliente, value1, 255);
+            read(socket_cliente, &value2, sizeof(int));
+            read(socket_cliente, &value3, sizeof(double));
+            result = set_value(clave, value1, value2, value3);
+            write(socket_cliente, &result, sizeof(int));
+            break;
+        case 2:
+            read(socket_cliente, &clave, sizeof(int));
+            read(socket_cliente, value1, 255);
+            read(socket_cliente, &value2, sizeof(int));
+            read(socket_cliente, &value3, sizeof(double));
+            result = get_value(clave, value1, &value2, &value3);
+            write(socket_cliente, &result, sizeof(int));
+            if (result == 1) {
+                write(socket_cliente, value1, 255);
+                write(socket_cliente, &value2, sizeof(int));
+                write(socket_cliente, &value3, sizeof(double));
+            }
+            break;
+        case 3:
+            read(socket_cliente, &clave, sizeof(int));
+            read(socket_cliente, value1, 255);
+            read(socket_cliente, &value2, sizeof(int));
+            read(socket_cliente, &value3, sizeof(double));
+            result = modify_value(clave, value1, value2, value3);
+            write(socket_cliente, &result, sizeof(int));
+            break;
+        case 4:
+            read(socket_cliente, &clave, sizeof(int));
+            result = delete_key(clave);
+            write(socket_cliente, &result, sizeof(int));
+            break;
+        case 5:
+            read(socket_cliente, &clave, sizeof(int));
+            result = exist(clave);
+            write(socket_cliente, &result, sizeof(int));
+            break;
+        case 6:
+            read(socket_cliente, &clave, sizeof(int));
+            read(socket_cliente, &value2, sizeof(int));
+            result = copy_key(clave, value2);
+            write(socket_cliente, &result, sizeof(int));
+            break;
     }
-
-    switch(op){
-        case 0: // init()
-            key = init();
-            if(send(sockfd, &key, sizeof(key), 0) < 0){
-                perror("send");
-                exit(-1);
-            }
-            break;
-        case 1: // set_value(int key, char *value1, int value2, double value3)
-            if(recv(sockfd, &key, sizeof(key), 0) < 0 ||
-               recv(sockfd, value1, sizeof(value1), 0) < 0 ||
-               recv(sockfd, &value2, sizeof(value2), 0) < 0 ||
-               recv(sockfd, &value3, sizeof(value3), 0) < 0){
-                perror("recv");
-                exit(-1);
-            }
-
-            if(set_value(key, value1, value2, value3)){
-                if(send(sockfd, &OK, sizeof(OK), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }else{
-                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }
-            break;
-        case 2: // get_value(int key, char *value1, int *value2, double *value3)
-            if(recv(sockfd, &key, sizeof(key), 0) < 0){
-                perror("recv");
-                exit(-1);
-            }
-
-            if(get_value(key, value1, &value2, &value3)){
-                if(send(sockfd, &OK, sizeof(OK), 0) < 0 ||
-                   send(sockfd, value1, sizeof(value1), 0) < 0 ||
-                   send(sockfd, &value2, sizeof(value2), 0) < 0 ||
-                   send(sockfd, &value3, sizeof(value3), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }else{
-                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }
-            break;
-        case 3: // modify_value(int key, char *value1, int value2, double value3)
-            if(recv(sockfd, &key, sizeof(key), 0) < 0 ||
-               recv(sockfd, value1, sizeof(value1), 0) < 0 ||
-               recv(sockfd, &value2, sizeof(value2), 0) < 0 ||
-               recv(sockfd, &value3, sizeof(value3), 0) < 0){
-                perror("recv");
-                exit(-1);
-            }
-
-            if(modify_value(key, value1, value2, value3)){
-                if(send(sockfd, &OK, sizeof(OK), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }else{
-                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
-                    perror("send");
-                    exit(-1);
-                }
-            }
-            break;
-        case 4: // delete_key(int key)
-            if(recv(sockfd, &key, sizeof(key), 0)
-
-
-
-
-
-
-
+}
 
 int main() {
-    int server_socket;
-    struct sockaddr_in server_address, client_address;
-    socklen_t client_address_length = sizeof(client_address);
+    int socket_servidor, socket_cliente, addrlen;
+    struct sockaddr_in address;
 
-    // Crear el socket del servidor
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
-        perror("Error al crear el socket del servidor");
+    socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_servidor == 0) {
+        perror("Error en socket()");
         exit(EXIT_FAILURE);
     }
 
-    // Configurar la dirección del servidor
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(PORT);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
 
-    // Asignar la dirección al socket del servidor
-    if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
-        perror("Error al asignar la dirección al socket del servidor");
+    if (bind(socket_servidor, (struct sockaddr *) &address, sizeof(address)) < 0) {
+        perror("Error en bind()");
         exit(EXIT_FAILURE);
     }
 
-    // Esperar conexiones de los clientes
+    if (listen(socket_servidor, 10) < 0) {
+        perror("Error en listen()");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Servidor iniciado. Escuchando en el puerto %d...\n", PORT);
+    addrlen = sizeof(address);
+
     while (1) {
-        int client_socket;
-        char buffer[MAX_MESSAGE_SIZE] = {0};
-
-        // Escuchar por conexiones de los clientes
-        if (listen(server_socket, MAX_CLIENTS) < 0) {
-            perror("Error al esperar por conexiones de los clientes");
+        if ((socket_cliente = accept(socket_servidor, (struct sockaddr *) &address, (socklen_t *) &addrlen)) < 0) {
+            perror("Error en accept()");
             exit(EXIT_FAILURE);
         }
 
-        // Aceptar una conexión de un cliente
-        client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_address_length);
-        if (client_socket < 0) {
-            perror("Error al aceptar una conexión de un cliente");
-            exit(EXIT_FAILURE);
-        }
+        printf("Nueva conexión aceptada. Socket del cliente: %d\n", socket_cliente);
 
-        // Leer el mensaje del cliente
-        read(client_socket, buffer, MAX_MESSAGE_SIZE);
-        printf("Mensaje recibido del cliente: %s\n", buffer);
+        procesar_peticion(socket_cliente);
 
-        // Procesar la petición y enviar la respuesta al cliente
-        char respuesta[MAX_MESSAGE_SIZE] = {0};
-        procesar_peticion(buffer, respuesta);
-        write(client_socket, respuesta, strlen(respuesta));
-        printf("Respuesta enviada al cliente: %s\n", respuesta);
-
-        // Cerrar el socket del cliente
-        close(client_socket);
+        close(socket_cliente);
     }
-
-    // Cerrar el socket del servidor
-    close(server_socket);
 
     return 0;
 }
+
