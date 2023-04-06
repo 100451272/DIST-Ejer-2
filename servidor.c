@@ -3,23 +3,91 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-void procesar_peticion(char *peticion, char *respuesta) {
-    struct peticion pet;
+void procesar_peticion(int sockfd){
+    int op, key, value2;
+    char value1[256];
+    double value3;
     struct tupla tupla;
-    int res;
 
-    // Convertir la cadena de la petición en una estructura de peticion
-    sscanf(peticion, "%d,%d,%[^,],%d,%lf", &pet.op, &tupla.clave, tupla.valor1, &tupla.valor2, &tupla.valor3);
-    pet.tupla = tupla;
+    if(recv(sockfd, &op, sizeof(op), 0) < 0){
+        perror("recv");
+        exit(-1);
+    }
 
-    // Procesar la petición
-    switch (pet.op) {
-        case 0:
-            res = init();
-            sprintf(respuesta, "%d", res);
+    switch(op){
+        case 0: // init()
+            key = init();
+            if(send(sockfd, &key, sizeof(key), 0) < 0){
+                perror("send");
+                exit(-1);
+            }
             break;
-        case 1:
-            res = set_value(pet.tup
+        case 1: // set_value(int key, char *value1, int value2, double value3)
+            if(recv(sockfd, &key, sizeof(key), 0) < 0 ||
+               recv(sockfd, value1, sizeof(value1), 0) < 0 ||
+               recv(sockfd, &value2, sizeof(value2), 0) < 0 ||
+               recv(sockfd, &value3, sizeof(value3), 0) < 0){
+                perror("recv");
+                exit(-1);
+            }
+
+            if(set_value(key, value1, value2, value3)){
+                if(send(sockfd, &OK, sizeof(OK), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }else{
+                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }
+            break;
+        case 2: // get_value(int key, char *value1, int *value2, double *value3)
+            if(recv(sockfd, &key, sizeof(key), 0) < 0){
+                perror("recv");
+                exit(-1);
+            }
+
+            if(get_value(key, value1, &value2, &value3)){
+                if(send(sockfd, &OK, sizeof(OK), 0) < 0 ||
+                   send(sockfd, value1, sizeof(value1), 0) < 0 ||
+                   send(sockfd, &value2, sizeof(value2), 0) < 0 ||
+                   send(sockfd, &value3, sizeof(value3), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }else{
+                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }
+            break;
+        case 3: // modify_value(int key, char *value1, int value2, double value3)
+            if(recv(sockfd, &key, sizeof(key), 0) < 0 ||
+               recv(sockfd, value1, sizeof(value1), 0) < 0 ||
+               recv(sockfd, &value2, sizeof(value2), 0) < 0 ||
+               recv(sockfd, &value3, sizeof(value3), 0) < 0){
+                perror("recv");
+                exit(-1);
+            }
+
+            if(modify_value(key, value1, value2, value3)){
+                if(send(sockfd, &OK, sizeof(OK), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }else{
+                if(send(sockfd, &ERROR, sizeof(ERROR), 0) < 0){
+                    perror("send");
+                    exit(-1);
+                }
+            }
+            break;
+        case 4: // delete_key(int key)
+            if(recv(sockfd, &key, sizeof(key), 0)
+
 
 
 
