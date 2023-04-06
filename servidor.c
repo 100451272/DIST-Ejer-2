@@ -1,80 +1,89 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
-#define PORT 8080
-#define BUFFER_SIZE 1024
+void procesar_peticion(char *peticion, char *respuesta) {
+    struct peticion pet;
+    struct tupla tupla;
+    int res;
 
-int server_fd, new_socket, valread;
-struct sockaddr_in address;
-int opt = 1;
-int addrlen = sizeof(address);
-char buffer[BUFFER_SIZE] = {0};
+    // Convertir la cadena de la petición en una estructura de peticion
+    sscanf(peticion, "%d,%d,%[^,],%d,%lf", &pet.op, &tupla.clave, tupla.valor1, &tupla.valor2, &tupla.valor3);
+    pet.tupla = tupla;
 
-// Crear el socket
-if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-    perror("socket failed");
-    exit(EXIT_FAILURE);
-}
+    // Procesar la petición
+    switch (pet.op) {
+        case 0:
+            res = init();
+            sprintf(respuesta, "%d", res);
+            break;
+        case 1:
+            res = set_value(pet.tup
 
-// Configurar opciones del socket
-if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-    perror("setsockopt");
-    exit(EXIT_FAILURE);
-}
 
-// Configurar dirección del servidor
-address.sin_family = AF_INET;
-address.sin_addr.s_addr = INADDR_ANY;
-address.sin_port = htons(PORT);
 
-// Asignar dirección al socket
-if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-    perror("bind failed");
-    exit(EXIT_FAILURE);
-}
 
-// Escuchar conexiones entrantes
-if (listen(server_fd, 3) < 0) {
-    perror("listen");
-    exit(EXIT_FAILURE);
-}
 
-while (1) {
-    // Aceptar conexión entrante
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
-    perror("accept");
-    exit(EXIT_FAILURE);
+
+
+int main() {
+    int server_socket;
+    struct sockaddr_in server_address, client_address;
+    socklen_t client_address_length = sizeof(client_address);
+
+    // Crear el socket del servidor
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        perror("Error al crear el socket del servidor");
+        exit(EXIT_FAILURE);
     }
 
-    // Leer datos enviados por el cliente
-    valread = read(new_socket, buffer, BUFFER_SIZE);
+    // Configurar la dirección del servidor
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_port = htons(PORT);
 
-    // Procesar solicitud del cliente
-    if (strncmp(buffer, "init", 4) == 0) {
-    // Llamar a la función init
-    } else if (strncmp(buffer, "set", 3) == 0) {
-    // Llamar a la función set_value
-    } else if (strncmp(buffer, "get", 3) == 0) {
-    // Llamar a la función get_value
-    } else if (strncmp(buffer, "modify", 6) == 0) {
-    // Llamar a la función modify_value
-    } else if (strncmp(buffer, "delete", 6) == 0) {
-    // Llamar a la función delete_key
-    } else if (strncmp(buffer, "exist", 5) == 0) {
-    // Llamar a la función exist
-    } else if (strncmp(buffer, "copy", 4) == 0) {
-    // Llamar a la función copy_key
+    // Asignar la dirección al socket del servidor
+    if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        perror("Error al asignar la dirección al socket del servidor");
+        exit(EXIT_FAILURE);
     }
 
-    // Limpiar buffer
-    memset(buffer, 0, BUFFER_SIZE);
+    // Esperar conexiones de los clientes
+    while (1) {
+        int client_socket;
+        char buffer[MAX_MESSAGE_SIZE] = {0};
 
-    // Cerrar conexión
-    close(new_socket);
+        // Escuchar por conexiones de los clientes
+        if (listen(server_socket, MAX_CLIENTS) < 0) {
+            perror("Error al esperar por conexiones de los clientes");
+            exit(EXIT_FAILURE);
+        }
+
+        // Aceptar una conexión de un cliente
+        client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_address_length);
+        if (client_socket < 0) {
+            perror("Error al aceptar una conexión de un cliente");
+            exit(EXIT_FAILURE);
+        }
+
+        // Leer el mensaje del cliente
+        read(client_socket, buffer, MAX_MESSAGE_SIZE);
+        printf("Mensaje recibido del cliente: %s\n", buffer);
+
+        // Procesar la petición y enviar la respuesta al cliente
+        char respuesta[MAX_MESSAGE_SIZE] = {0};
+        procesar_peticion(buffer, respuesta);
+        write(client_socket, respuesta, strlen(respuesta));
+        printf("Respuesta enviada al cliente: %s\n", respuesta);
+
+        // Cerrar el socket del cliente
+        close(client_socket);
+    }
+
+    // Cerrar el socket del servidor
+    close(server_socket);
+
+    return 0;
 }
