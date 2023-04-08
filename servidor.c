@@ -5,9 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-//#include "claves.h"???
-
-
+#include "claves.h"
 
 void procesar_peticion(int socket_cliente) {
     int op, clave, value2, result;
