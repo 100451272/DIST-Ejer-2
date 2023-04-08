@@ -7,7 +7,7 @@
 #include <netinet/in.h>
 //#include "claves.h"???
 
-#define PORT 8080
+
 
 void procesar_peticion(int socket_cliente) {
     int op, clave, value2, result;
@@ -73,6 +73,20 @@ int main() {
     int socket_servidor, socket_cliente, addrlen;
     struct sockaddr_in address;
 
+    // Obtener la dirección IP del servidor de tuplas desde la variable de entorno
+    char *ip_tuplas = getenv("IP_TUPLAS");
+    if (ip_tuplas == NULL) {
+        printf("La variable de entorno IP_TUPLAS no está definida.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Obtener el puerto del servidor de tuplas desde la variable de entorno
+    char *port_tuplas = getenv("PORT_TUPLAS");
+    if (port_tuplas == NULL) {
+        printf("La variable de entorno PORT_TUPLAS no está definida.\n");
+        exit(EXIT_FAILURE);
+    }
+
     socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_servidor == 0) {
         perror("Error en socket()");
@@ -80,8 +94,8 @@ int main() {
     }
 
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_addr.s_addr = inet_addr(ip_tuplas);  // Utilizar la dirección IP obtenida de la variable de entorno
+    address.sin_port = htons(atoi(port_tuplas));  // Utilizar el puerto obtenido de la variable de entorno
 
     if (bind(socket_servidor, (struct sockaddr *) &address, sizeof(address)) < 0) {
         perror("Error en bind()");
@@ -93,7 +107,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    printf("Servidor iniciado. Escuchando en el puerto %d...\n", PORT);
+    printf("Servidor iniciado. Escuchando en el puerto %s...\n", port_tuplas);
     addrlen = sizeof(address);
 
     while (1) {
@@ -111,4 +125,3 @@ int main() {
 
     return 0;
 }
-
