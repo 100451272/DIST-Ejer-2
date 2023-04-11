@@ -1,125 +1,185 @@
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/types.h>
 #include <netinet/in.h>
-#include "claves.h"
+#include <string.h>
+#include <stdbool.h>
+#include <pthread.h>
+#include "list.h"
 
-void procesar_peticion(int socket_cliente) {
-    int op, clave, value2, result;
-    double value3;
-    char value1[255];
-    struct tupla tupla;
+// declare a global mutex
+pthread_mutex_t mutex_mensaje, mutex_lista;
+pthread_cond_t c_cop;
+bool copiado = false;
+List list;
+int sd, sc;
 
-    read(socket_cliente, &op, sizeof(int));
-    switch (op) {
-        case 0:
-            result = init();
-            write(socket_cliente, &result, sizeof(int));
+void petition_handler(void *peticion){
+    struct peticion res;
+    // Protegemos la copia de la peticion con mutex
+    pthread_mutex_lock(&mutex_mensaje);
+    struct peticion pet = (*(struct peticion *)peticion);
+    copiado = true;
+    int client_socket = sc;
+    pthread_cond_signal(&c_cop);
+    pthread_mutex_unlock(&mutex_mensaje);
+
+    // Protegemos las operaciones sobre la lista para evitar
+    // condiciones de carrera en la lista
+    pthread_mutex_lock(&mutex_lista);
+    switch (pet.op) {
+        case 0: //INIT
+            init(&list);
+            res.op= 0;
             break;
-        case 1:
-            read(socket_cliente, &clave, sizeof(int));
-            read(socket_cliente, value1, 255);
-            read(socket_cliente, &value2, sizeof(int));
-            read(socket_cliente, &value3, sizeof(double));
-            result = set_value(clave, value1, value2, value3);
-            write(socket_cliente, &result, sizeof(int));
+
+        case 1: //SET_VALUE
+            set(&list, pet.tupla.clave, &pet.tupla);
+            res.op = 0;
+            printList(list);
             break;
-        case 2:
-            read(socket_cliente, &clave, sizeof(int));
-            read(socket_cliente, value1, 255);
-            read(socket_cliente, &value2, sizeof(int));
-            read(socket_cliente, &value3, sizeof(double));
-            result = get_value(clave, value1, &value2, &value3);
-            write(socket_cliente, &result, sizeof(int));
-            if (result == 1) {
-                write(socket_cliente, value1, 255);
-                write(socket_cliente, &value2, sizeof(int));
-                write(socket_cliente, &value3, sizeof(double));
+
+        case 2: //GET_VALUE
+            res.op = get(&list, pet.tupla.clave, &pet.tupla);
+            if (res.op == 0) { // si la operación fue exitosa
+                // copiamos los valores de la tupla a los campos de la respuesta
+                strcpy(res.tupla.valor1, pet.tupla.valor1);
+                res.tupla.valor2 = pet.tupla.valor2;
+                res.tupla.valor3 = pet.tupla.valor3;
             }
             break;
-        case 3:
-            read(socket_cliente, &clave, sizeof(int));
-            read(socket_cliente, value1, 255);
-            read(socket_cliente, &value2, sizeof(int));
-            read(socket_cliente, &value3, sizeof(double));
-            result = modify_value(clave, value1, value2, value3);
-            write(socket_cliente, &result, sizeof(int));
+
+        case 3: //MODIFY_VALUE
+        if (exists(&list, pet.tupla.clave) == 0) {
+            printf("La clave %d no existe\n", pet.tupla.clave);
+            res.op = -1;
             break;
-        case 4:
-            read(socket_cliente, &clave, sizeof(int));
-            result = delete_key(clave);
-            write(socket_cliente, &result, sizeof(int));
+        }
+            delete_node(&list, pet.tupla.clave);
+            set(&list, pet.tupla.clave, &pet.tupla);
+            printList(list);
+            res.op = 0;
             break;
-        case 5:
-            read(socket_cliente, &clave, sizeof(int));
-            result = exist(clave);
-            write(socket_cliente, &result, sizeof(int));
+
+        case 4: //DELETE_KEY
+            if (delete_node(&list, pet.tupla.clave) == 0) {
+                res.op = 0;
+            } else {
+                res.op = -1;
+            }
+            printList(list);
+            fflush(NULL);
             break;
-        case 6:
-            read(socket_cliente, &clave, sizeof(int));
-            read(socket_cliente, &value2, sizeof(int));
-            result = copy_key(clave, value2);
-            write(socket_cliente, &result, sizeof(int));
+
+        case 5: //EXIST
+            res.op = exists(&list, pet.tupla.clave);
+            if (res.op == 0) {
+                printf("No existe\n");
+            }
+            else if (res.op == 1){
+                printf("Existe\n");
+            }
+            printList(list);
             break;
+
+        case 6: // COPY_KEY
+        {
+            struct tupla tupla1, tupla2;
+            int key1 = pet.tupla.clave;
+            int key2 = pet.tupla.valor2;
+
+            // Buscar la tupla de key1
+            if (get(&list, key1, &tupla1) == -1) {
+                res.op = -1; // La clave key1 no existe
+                break;
+            }
+
+            // Crear la tupla de key2 con los valores de key1
+            tupla2.clave = key2;
+            strcpy(tupla2.valor1, tupla1.valor1);
+            tupla2.valor2 = tupla1.valor2;
+            tupla2.valor3 = tupla1.valor3;
+
+            // Insertar o modificar la tupla en la lista
+            delete_node(&list, tupla2.clave);
+            set(&list, key2, &tupla2);
+
+            res.op = 0;
+            printList(list);
+            break;
+        }
     }
+    // Liberamos el mutex de la lista para que puedan acceder otros
+    // threads a la lista
+    pthread_mutex_unlock(&mutex_lista);
+    int sent = send(client_socket, &res, sizeof(res), 0);
+    if (sent < 0){
+        printf("Error en el send\n");
+    }
+    close(client_socket);
+    
+    pthread_exit(0);
 }
 
-int main() {
-    int socket_servidor, socket_cliente, addrlen;
-    struct sockaddr_in address;
 
-    // Obtener la dirección IP del servidor de tuplas desde la variable de entorno
-    char *ip_tuplas = getenv("IP_TUPLAS");
-    if (ip_tuplas == NULL) {
-        printf("La variable de entorno IP_TUPLAS no está definida.\n");
-        exit(EXIT_FAILURE);
+
+int main(void){
+    struct peticion pet;
+    pthread_attr_t t_attr;
+   	pthread_t thid;
+    struct sockaddr_in server_address;
+    struct sockaddr_in client_address;
+    socklen_t client_address_length = sizeof(client_address);
+
+    
+    sd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int val = 1;
+    int err = setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char *) &val, sizeof(int));
+    if (err < 0){
+        printf("Error en option");
+        exit(-1);
     }
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(5000);
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    bind(sd, (struct sockaddr*)&server_address, sizeof(server_address));
 
-    // Obtener el puerto del servidor de tuplas desde la variable de entorno
-    char *port_tuplas = getenv("PORT_TUPLAS");
-    if (port_tuplas == NULL) {
-        printf("La variable de entorno PORT_TUPLAS no está definida.\n");
-        exit(EXIT_FAILURE);
-    }
 
-    socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_servidor == 0) {
-        perror("Error en socket()");
-        exit(EXIT_FAILURE);
-    }
+    
+    pthread_mutex_init(&mutex_mensaje, NULL);
+	pthread_cond_init(&c_cop, NULL);
+    pthread_mutex_init(&mutex_lista, NULL);
+	pthread_attr_init(&t_attr);
 
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip_tuplas);  // Utilizar la dirección IP obtenida de la variable de entorno
-    address.sin_port = htons(atoi(port_tuplas));  // Utilizar el puerto obtenido de la variable de entorno
+	pthread_attr_setdetachstate(&t_attr, PTHREAD_CREATE_DETACHED);
 
-    if (bind(socket_servidor, (struct sockaddr *) &address, sizeof(address)) < 0) {
-        perror("Error en bind()");
-        exit(EXIT_FAILURE);
-    }
+    listen(sd, SOMAXCONN);
 
-    if (listen(socket_servidor, 10) < 0) {
-        perror("Error en listen()");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Servidor iniciado. Escuchando en el puerto %s...\n", port_tuplas);
-    addrlen = sizeof(address);
-
-    while (1) {
-        if ((socket_cliente = accept(socket_servidor, (struct sockaddr *) &address, (socklen_t *) &addrlen)) < 0) {
-            perror("Error en accept()");
-            exit(EXIT_FAILURE);
+    while(1) {
+        sc = accept(sd, (struct sockaddr*)&client_address, &client_address_length);
+        int received = recv(sc, &pet, sizeof(pet), 0);
+        if (received < 0){
+            printf("Error en la recepción\n");
         }
-
-        printf("Nueva conexión aceptada. Socket del cliente: %d\n", socket_cliente);
-
-        procesar_peticion(socket_cliente);
-
-        close(socket_cliente);
-    }
-
+        printf("Peticion recibida: %d\n", pet.op);
+        if (pthread_create(&thid, &t_attr, (void *)petition_handler, (void *)&pet)== 0) {
+			// se espera a que el thread copie el mensaje 
+			pthread_mutex_lock(&mutex_mensaje);
+			while (!copiado)
+				pthread_cond_wait(&c_cop, &mutex_mensaje);
+			copiado = false;
+            close(sc);
+			pthread_mutex_unlock(&mutex_mensaje);
+	 	}  
+        fflush(NULL);
+        //printf("%d", res.op);
+                /* se responde al cliente abriendo reviamente su cola */
+        }   
+    close(sd);
     return 0;
 }
