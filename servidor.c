@@ -21,6 +21,7 @@ int sd, sc;
 
 void petition_handler(void *peticion){
     struct peticion res;
+    bzero((char *)&res, sizeof(res));
     // Protegemos la copia de la peticion con mutex
     pthread_mutex_lock(&mutex_mensaje);
     struct peticion pet = (*(struct peticion *)peticion);
@@ -118,7 +119,7 @@ void petition_handler(void *peticion){
     // threads a la lista
     pthread_mutex_unlock(&mutex_lista);
     int sent = send(client_socket, &res, sizeof(res), 0);
-    if (sent < 0){
+    if (sent == -1){
         printf("Error en el send\n");
     }
     close(client_socket);
@@ -128,7 +129,12 @@ void petition_handler(void *peticion){
 
 
 
-int main(void){
+int main(int argc, char *argv[]){
+    if (argc != 2){
+        printf("Error. Uso: ./servidor <PUERTO>\n");
+        return -1;
+    }
+    int puerto = atoi(argv[1]);
     struct peticion pet;
     pthread_attr_t t_attr;
    	pthread_t thid;
@@ -145,7 +151,7 @@ int main(void){
         exit(-1);
     }
     server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(5000);
+    server_address.sin_port = htons(puerto);
     server_address.sin_addr.s_addr = INADDR_ANY;
     bind(sd, (struct sockaddr*)&server_address, sizeof(server_address));
 
