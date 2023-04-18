@@ -11,6 +11,20 @@
 #include <string.h>
 #include <mqueue.h>
 
+char* peticion_to_char(struct peticion p) {
+    char* serializado = malloc(1024);
+    char tmp[1024];
+    sprintf(tmp, "%d/%d/%s/%d/%f", p.op, p.tupla.clave, p.tupla.valor1, p.tupla.valor2, p.tupla.valor3);
+    strcpy(serializado, tmp);
+    return serializado;
+}
+
+struct peticion char_to_respuesta(char* serialized) {
+    struct peticion *p = (struct peticion *) malloc(sizeof(struct peticion));
+    sscanf(serialized, "%d/%d/%[^/]/%d/%lf", &p->op, &p->tupla.clave, p->tupla.valor1, &p->tupla.valor2, &p->tupla.valor3);
+    return *p;
+}
+
 struct peticion send_recieve(struct peticion pet){
     char *ip;
     ip = getenv("IP_TUPLAS");
@@ -53,21 +67,21 @@ struct peticion send_recieve(struct peticion pet){
         perror("Error al conectar al servidor");
         exit(EXIT_FAILURE);
     }
-
-    struct peticion res;
-
-    if (send(sd, (const char *) &pet, sizeof(pet), 0) < 0) {
+    char* buffer = malloc(1024);
+    buffer = peticion_to_char(pet);
+    if (send(sd, (const char *) buffer, strlen(buffer), 0) < 0) {
         perror("Error al enviar datos al servidor");
         exit(EXIT_FAILURE);
     }
-
-    if (recv(sd, (char *) &res, sizeof(res), 0) < 0) {
+    char* buffer_resp = malloc(1024);
+    if (recv(sd, (char *) buffer_resp, 1024, 0) < 0) {
         perror("Error al recibir datos del servidor");
+        fflush(NULL);
         exit(EXIT_FAILURE);
     }
+    struct peticion res = char_to_respuesta(buffer_resp);
 
     printf("Resultado = %d\n", res.op);
-
     close(sd);
     
 
@@ -79,6 +93,10 @@ int init(void){
     struct peticion res;
     /* se rellena la petición */
     pet.op = 0; 
+    pet.tupla.clave = 0;
+    strcpy(pet.tupla.valor1, "0");
+    pet.tupla.valor2 = 0;
+    pet.tupla.valor3 = 0;
 	res = send_recieve(pet);
 	return res.op;
 }
@@ -107,6 +125,9 @@ int get_value(int key, char *value1, int *value2, double *value3){
     /* se rellena la petición */
     pet.op = 2;
     pet.tupla.clave = key;
+    strcpy(pet.tupla.valor1, "0");
+    pet.tupla.valor2 = 0;
+    pet.tupla.valor3 = 0;
 	res = send_recieve(pet);
     strcpy(value1, res.tupla.valor1);
     *value2 = res.tupla.valor2;
@@ -134,6 +155,9 @@ int delete_key(int key){
     /* se rellena la petición */
     pet.op = 4;
     pet.tupla.clave = key;
+    strcpy(pet.tupla.valor1, "0");
+    pet.tupla.valor2 = 0;
+    pet.tupla.valor3 = 0;
 	res = send_recieve(pet);
 	return res.op;
 }
@@ -144,6 +168,9 @@ int exist(int key){
     /* se rellena la petición */
     pet.op = 5;
     pet.tupla.clave = key;
+    strcpy(pet.tupla.valor1, "0");
+    pet.tupla.valor2 = 0;
+    pet.tupla.valor3 = 0;
 	res = send_recieve(pet);
 	return res.op;
 }
@@ -155,6 +182,8 @@ int copy_key(int key1, int key2){
     pet.tupla.clave = key1;
     pet.tupla.valor2 = key2; // Reutilizamos el valor 2 como paso de la clave 2
     pet.op = 6;
+    strcpy(pet.tupla.valor1, "0");
+    pet.tupla.valor3 = 0;
 	res = send_recieve(pet);
 	return res.op;
 }

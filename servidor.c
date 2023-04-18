@@ -19,6 +19,20 @@ bool copiado = false;
 List list;
 int sd, sc;
 
+char* respuesta_to_char(struct peticion p) {
+    char* serializado = malloc(1024);
+    char tmp[1024];
+    sprintf(tmp, "%d/%d/%s/%d/%f", p.op, p.tupla.clave, p.tupla.valor1, p.tupla.valor2, p.tupla.valor3);
+    strcpy(serializado, tmp);
+    return serializado;
+}
+
+struct peticion char_to_peticion(char* serialized) {
+    struct peticion *p = (struct peticion *) malloc(sizeof(struct peticion));
+    sscanf(serialized, "%d/%d/%[^/]/%d/%lf", &p->op, &p->tupla.clave, p->tupla.valor1, &p->tupla.valor2, &p->tupla.valor3);
+    return *p;
+}
+
 void petition_handler(void *peticion){
     struct peticion res;
     bzero((char *)&res, sizeof(res));
@@ -118,7 +132,8 @@ void petition_handler(void *peticion){
     // Liberamos el mutex de la lista para que puedan acceder otros
     // threads a la lista
     pthread_mutex_unlock(&mutex_lista);
-    int sent = send(client_socket, &res, sizeof(res), 0);
+    char* buffer = respuesta_to_char(res);
+    int sent = send(client_socket, buffer, 1024, 0);
     if (sent == -1){
         printf("Error en el send\n");
     }
@@ -168,23 +183,23 @@ int main(int argc, char *argv[]){
 
     while(1) {
         sc = accept(sd, (struct sockaddr*)&client_address, &client_address_length);
-        int received = recv(sc, &pet, sizeof(pet), 0);
+        char* buffer = malloc(1024);
+        int received = recv(sc, buffer, 1024, 0);
         if (received < 0){
             printf("Error en la recepción\n");
         }
-        printf("Peticion recibida: %d\n", pet.op);
-        if (pthread_create(&thid, &t_attr, (void *)petition_handler, (void *)&pet)== 0) {
-			// se espera a que el thread copie el mensaje 
-			pthread_mutex_lock(&mutex_mensaje);
-			while (!copiado)
-				pthread_cond_wait(&c_cop, &mutex_mensaje);
-			copiado = false;
-            close(sc);
-			pthread_mutex_unlock(&mutex_mensaje);
-	 	}  
         fflush(NULL);
-        //printf("%d", res.op);
-                /* se responde al cliente abriendo reviamente su cola */
+        pet = char_to_peticion(buffer);
+        printf("Peticion recibida: %d\n", pet.op);
+        copiado = false;
+        pthread_mutex_lock(&mutex_mensaje);
+        pthread_create(&thid, &t_attr, (void *)petition_handler, (void *)&pet);
+        while (!copiado){
+            pthread_cond_wait(&c_cop, &mutex_mensaje);
+        }
+        copiado = true;
+        pthread_mutex_unlock(&mutex_mensaje);  
+        fflush(NULL);
         }   
     close(sd);
     return 0;
